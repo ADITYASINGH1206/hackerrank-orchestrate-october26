@@ -11,6 +11,11 @@ from typing import Dict, List, Set, Optional
 from code.core.models import Observation, Activity
 from code.core.identity import IdentitySet, resolve_identity
 from code.core.store import ObservationStore
+import re
+
+VALID_RESOURCE_RE = re.compile(
+    r"^(account_\d+|analytics_\d+|audit_record_\d+|backup_\d+|data_flow_\d+|export_\d+|search_\d+|support_\d+|tombstone_\d+)$"
+)
 
 
 @dataclass
@@ -158,7 +163,14 @@ def discover_resources_for_case(case: dict, store: ObservationStore) -> CaseReso
             if any(w in req_text for w in ("analytics", "statistic", "usage", "tracking")):
                 result.resources.add(a.resource_id)
 
-    # 6. Collect filtered observations and activities for all discovered resources
+    # 6. Filter to canonical resource identifiers only
+    result.resources = {r for r in result.resources if VALID_RESOURCE_RE.match(r)}
+    if result.primary_account and not VALID_RESOURCE_RE.match(result.primary_account):
+        result.primary_account = None
+    if result.audit_record and not VALID_RESOURCE_RE.match(result.audit_record):
+        result.audit_record = None
+
+    # 7. Collect filtered observations and activities for all discovered resources
     for r in result.resources:
         r_obs = [
             o for o in store.observations_by_resource.get(r, [])
