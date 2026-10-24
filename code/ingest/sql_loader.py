@@ -59,9 +59,16 @@ def load_sql_evidence(file_path: Path, file_id: str, manifest_captured_at: str) 
             if "record_json" in row_dict and row_dict["record_json"]:
                 try:
                     inner_record = json.loads(row_dict["record_json"])
-                    for k in ("email", "phone", "email_hash", "user_id", "customer_reference", "subject_reference"):
+                    if isinstance(inner_record.get("document"), dict):
+                        for dk, dv in inner_record["document"].items():
+                            if dk not in inner_record:
+                                inner_record[dk] = dv
+                    for k in ("email", "phone", "email_hash", "user_id"):
                         if inner_record.get(k):
                             ids[k] = inner_record[k]
+                    for ref_key in ("customer_reference", "subject_reference"):
+                        if inner_record.get(ref_key) and "user_id" not in ids:
+                            ids["user_id"] = inner_record[ref_key]
                     for k in ("full_name", "display_name", "name"):
                         if inner_record.get(k):
                             ids["name"] = inner_record[k]
