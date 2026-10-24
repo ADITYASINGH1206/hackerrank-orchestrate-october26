@@ -13,6 +13,7 @@ def evaluate_resource_policy(
     exists: Optional[bool],
     flags: Dict[str, Any],
     ids: Dict[str, Any],
+    activities: Optional[list] = None,
 ) -> Dict[str, Any]:
     """
     Given a resource and its state at audit_at, determine compliance against deletion_rules.csv.
@@ -141,8 +142,9 @@ def evaluate_resource_policy(
     # 5. Analytics Profiles
     if resource_id.startswith("analytics_"):
         is_anonymized = flags.get("anonymized", False)
-        # Check if historical email hash remained in analytics store
-        if ids.get("email_hash") and not is_anonymized and exists is True:
+        has_delete_act = bool(activities and any(a.event_type == "DELETE_RECORD" for a in activities))
+        # If deletion worker executed DELETE_RECORD on this analytics resource
+        if has_delete_act and not is_anonymized and exists is True:
             return {
                 "category": "ANALYTICS_PROFILE",
                 "system_id": system_id,
@@ -186,9 +188,11 @@ def evaluate_resource_policy(
     # 6. Support Tickets / Attachments
     if resource_id.startswith("support_"):
         doc_type = flags.get("document_type")
+        record_type = flags.get("record_type")
         file_name = flags.get("file_name", "")
+        has_delete_act = bool(activities and any(a.event_type == "DELETE_RECORD" for a in activities))
         # If it is a file/attachment belonging solely to customer -> DELETE
-        if doc_type == "support_attachment" or file_name.endswith((".pdf", ".png", ".jpg")):
+        if doc_type == "support_attachment" or record_type == "SUPPORT_ATTACHMENT" or file_name.endswith((".pdf", ".png", ".jpg")) or has_delete_act:
             if exists is True:
                 return {
                     "category": "SUPPORT_ATTACHMENT",

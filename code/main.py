@@ -1,61 +1,105 @@
 """
 Main entry point for Ghost Data Still Exists deletion audit agent.
+Runs audit pipeline on evaluation requests and produces compliant output.csv.
 """
 
 import sys
 import argparse
+import csv
+import json
 from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
+from code.config import (
+    DELETION_REQUESTS_CSV,
+    SAMPLE_DELETION_REQUESTS_CSV,
+    FINAL_OUTPUT_CSV,
+)
 from code.core.store import ObservationStore
+from code.core.discovery import discover_resources_for_case
+from code.core.planner import plan_case
+
+
+def run_pipeline(input_csv: Path, output_csv: Path, store: ObservationStore = None):
+    """Run full deletion audit pipeline on input cases and produce output CSV."""
+    if store is None:
+        print("Initializing and loading ObservationStore...")
+        store = ObservationStore()
+        store.load_all()
+
+    with open(input_csv, "r", encoding="utf-8") as f:
+        cases = list(csv.DictReader(f))
+
+    # Sort cases deterministically by case_id
+    cases.sort(key=lambda c: int(c["case_id"].split("_")[-1]) if c["case_id"].split("_")[-1].isdigit() else c["case_id"])
+
+    print(f"Processing {len(cases)} cases from {input_csv.name}...")
+
+    results = []
+    status_counts = {"COMPLETE": 0, "INCOMPLETE": 0, "NOT_APPLICABLE": 0}
+    total_steps_count = 0
+
+    for idx, case in enumerate(cases, start=1):
+        case_id = case["case_id"]
+        case_res = discover_resources_for_case(case, store)
+        status, steps = plan_case(case, case_res)
+
+        status_counts[status] = status_counts.get(status, 0) + 1
+        total_steps_count += len(steps)
+
+        # Ensure steps_json is empty array for NOT_APPLICABLE
+        if status == "NOT_APPLICABLE":
+            steps_json = "[]"
+        else:
+            steps_json = json.dumps(steps, separators=(",", ":"))
+
+        results.append({
+            "case_id": case_id,
+            "deletion_status": status,
+            "steps_json": steps_json,
+        })
+
+        if idx % 100 == 0 or idx == len(cases):
+            print(f"  Processed {idx}/{len(cases)} cases...")
+
+    # Write output CSV with exact required headers
+    print(f"Writing {len(results)} rows to {output_csv}...")
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["case_id", "deletion_status", "steps_json"])
+        writer.writeheader()
+        writer.writerows(results)
+
+    print("\n=== Execution Summary ===")
+    print(f"Total cases evaluated: {len(results)}")
+    print(f"Status breakdown: {status_counts}")
+    print(f"Total steps planned: {total_steps_count}")
+    print(f"Average steps per case: {total_steps_count / len(results):.2f}")
+    print(f"Output successfully written to: {output_csv}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Ghost Data Still Exists Deletion-Audit Agent")
+    parser.add_argument("--samples", action="store_true", help="Run audit on sample_deletion_requests.csv")
+    parser.add_argument("--input", type=str, help="Custom input CSV path")
+    parser.add_argument("--output", type=str, help="Custom output CSV path")
     parser.add_argument("--inspect", type=str, help="Inspect history of a specific resource_id")
-    parser.add_argument("--stats", action="store_true", help="Print observation store statistics")
-    parser.add_argument("--no-llm", action="store_true", help="Run without calling external LLMs")
     args = parser.parse_args()
 
-    # Initialize and load store
     store = ObservationStore()
+    print("Loading observation store...")
     store.load_all()
 
     if args.inspect:
         print(store.inspect_resource(args.inspect))
         return
 
-    # Print summary statistics
-    sql_obs = sum(1 for o in store.observations if o.file_id in store.manifest and store.manifest[o.file_id].file_path.endswith(".sql"))
-    json_obs = sum(1 for o in store.observations if o.file_id in store.manifest and store.manifest[o.file_id].file_path.endswith(".json"))
-    log_obs = sum(1 for o in store.observations if o.file_id in store.manifest and store.manifest[o.file_id].file_path.endswith(".log"))
-    txt_obs = sum(1 for o in store.observations if o.file_id in store.manifest and store.manifest[o.file_id].file_path.endswith(".txt"))
+    input_file = Path(args.input) if args.input else (SAMPLE_DELETION_REQUESTS_CSV if args.samples else DELETION_REQUESTS_CSV)
+    output_file = Path(args.output) if args.output else FINAL_OUTPUT_CSV
 
-    print("=== Observation Store Ingestion Summary ===")
-    print(f"Total observations: {len(store.observations)}")
-    print(f"  SQL observations: {sql_obs}")
-    print(f"  JSON observations: {json_obs}")
-    print(f"  Log observations: {log_obs}")
-    print(f"  Text observations: {txt_obs}")
-    print(f"Total unique resources observed: {len(store.observations_by_resource)}")
-    print(f"Total system activities: {len(store.activities)}")
-    print(f"Total identities: {len(store.identities)}")
-    print(f"Total audit logs: {len(store.audit_logs)}")
-    print(f"Total deletion rules: {len(store.rules)}")
-
-    # Check for evidence files with 0 observations
-    zero_obs_files = [
-        ef.file_id for ef in store.manifest.values()
-        if len(store.observations_by_file.get(ef.file_id, [])) == 0
-        and not ef.file_path.endswith(".pdf")
-        and not ef.file_path.endswith(".png")
-    ]
-    if zero_obs_files:
-        print(f"\nWarning: Evidence files yielding zero observations (excluding PDF/PNG): {zero_obs_files}")
-    else:
-        print("\nAll non-PDF/PNG evidence files yielded >0 observations.")
+    run_pipeline(input_file, output_file, store)
 
 
 if __name__ == "__main__":

@@ -19,14 +19,14 @@ def reconstruct_resource_state(
     Returns:
         (exists, flags, ids, evidence_id)
     """
-    # 1. Filter observations up to audit_at
+    # 1. Filter observations up to audit_at (strictly by file captured_at)
     valid_obs = [
         o for o in observations
-        if (o.observed_at or o.captured_at) <= audit_at
+        if o.captured_at <= audit_at
     ]
 
-    # Sort observations chronologically
-    valid_obs.sort(key=lambda o: (o.observed_at or o.captured_at))
+    # Sort observations chronologically: captured_at, then observed_at, then file_id
+    valid_obs.sort(key=lambda o: (o.captured_at, o.observed_at or "", o.file_id))
 
     exists: Optional[bool] = None
     flags: Dict[str, Any] = {}

@@ -46,7 +46,9 @@ def load_pdf_evidence(file_path: Path, file_id: str, manifest_captured_at: str) 
             ids["phone"] = phone_match.group(1).strip()
         if "Priya Raman" in full_text:
             ids["name"] = "Priya Raman"
-            ids["user_id"] = "user_01"
+        m_u = USER_RE.search(full_text)
+        if m_u:
+            ids["user_id"] = m_u.group(1)
 
         obs = Observation(
             file_id=file_id,

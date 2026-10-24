@@ -16,7 +16,7 @@ def load_json_evidence(file_path: Path, file_id: str, manifest_captured_at: str)
         data = json.load(f)
 
     observations: List[Observation] = []
-    file_captured_at = data.get("captured_at") or data.get("exported_at") or manifest_captured_at
+    file_captured_at = manifest_captured_at
 
     # Variant 1: Snapshot bundle
     if "snapshots" in data:
@@ -26,7 +26,7 @@ def load_json_evidence(file_path: Path, file_id: str, manifest_captured_at: str)
             collection = snap.get("collection", "collection")
 
             for rec in snap.get("records", []):
-                obs = _parse_record(rec, file_id, snap_time, data_store, collection)
+                obs = _parse_record(rec, file_id, file_captured_at, data_store, collection, snap_time=snap_time)
                 if obs:
                     observations.append(obs)
 
@@ -65,6 +65,7 @@ def _parse_record(
     captured_at: str,
     default_system: str,
     location: str,
+    snap_time: Optional[str] = None,
 ) -> Optional[Observation]:
     res_id = rec.get("resource_id")
     if not res_id:
@@ -73,7 +74,7 @@ def _parse_record(
     ids: Dict[str, Any] = {}
     flags: Dict[str, Any] = {}
     exists: Optional[bool] = True
-    observed_at = rec.get("observed_at") or rec.get("recorded_at") or rec.get("created_at") or captured_at
+    observed_at = rec.get("observed_at") or rec.get("recorded_at") or rec.get("created_at") or snap_time or captured_at
 
     # Result checks
     result = str(rec.get("result", "")).upper()
