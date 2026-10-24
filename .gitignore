@@ -1,7 +1,9 @@
-# User prompt & architecture files (requested to keep local)
+# User prompt, architecture & docs (strictly local)
+docs/
 BUILD_PROMPT.md
 ARCHITECTURE_AND_PLAN.md
 ARCHITECTURE_AND_PLAN_HOOCT26.md
+IMPROVEMENT_PLAN.md
 
 # Python
 __pycache__/
