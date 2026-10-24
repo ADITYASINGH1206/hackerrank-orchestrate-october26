@@ -1,0 +1,23 @@
+# User prompt & architecture files (requested to keep local)
+BUILD_PROMPT.md
+ARCHITECTURE_AND_PLAN.md
+ARCHITECTURE_AND_PLAN_HOOCT26.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+
+# Secrets & Config
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
